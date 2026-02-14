@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import engine, Base
-from app.routers import auth, upload # upload 등 다른 라우터도 완성되면 import
+from app.routers import auth, upload, chat
 
 # DB 테이블 자동 생성
 Base.metadata.create_all(bind=engine)
@@ -20,7 +20,8 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(auth.router)
-app.include_router(upload.router) # 완성되면 주석 해제
+app.include_router(upload.router)
+app.include_router(chat.router)
 
 @app.get("/")
 def read_root():

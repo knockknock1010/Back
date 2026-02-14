@@ -75,3 +75,29 @@ class ClauseAnalysis(Base):
     tags = Column(JSON, default=[]) 
     
     clause = relationship("Clause", back_populates="analysis")
+
+# 4. 채팅 세션 테이블
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id"))
+    document_id = Column(GUID(), ForeignKey("documents.id"), nullable=True)  # 특정 문서 범위 (선택)
+    title = Column(String, default="새 상담")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    user = relationship("User")
+    document = relationship("Document")
+    messages = relationship("ChatMessage", back_populates="session", order_by="ChatMessage.created_at")
+
+# 5. 채팅 메시지 테이블
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    session_id = Column(GUID(), ForeignKey("chat_sessions.id"))
+    role = Column(String)    # "user" or "assistant"
+    content = Column(Text)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    session = relationship("ChatSession", back_populates="messages")

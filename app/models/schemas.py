@@ -38,3 +38,29 @@ class HomeDashboardResponse(BaseModel):
     total_safe_count: int
     total_risk_count: int
     recent_documents: List[DocumentResponse]
+
+# --- Chat 관련 ---
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[uuid.UUID] = None
+    document_id: Optional[uuid.UUID] = None
+
+class ChatMessageResponse(BaseModel):
+    id: uuid.UUID
+    role: str
+    content: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class ChatResponse(BaseModel):
+    session_id: uuid.UUID
+    message: ChatMessageResponse
+
+class ChatSessionResponse(BaseModel):
+    id: uuid.UUID
+    title: str
+    document_id: Optional[uuid.UUID] = None
+    created_at: datetime
+    class Config:
+        from_attributes = True

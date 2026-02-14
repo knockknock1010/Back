@@ -1,8 +1,20 @@
-# app/services/analyzer.py
+﻿import json
 import os
-import json
+from pathlib import Path
+
+from dotenv import dotenv_values, load_dotenv
 from openai import OpenAI
-from dotenv import load_dotenv
+
+ENV_PATH = Path(__file__).resolve().parents[2] / '.env'
+load_dotenv(ENV_PATH, override=True)
+
+
+def _get_client() -> OpenAI:
+    env_file_values = dotenv_values(ENV_PATH)
+    api_key = (env_file_values.get('OPENAI_API_KEY') or os.getenv('OPENAI_API_KEY', '')).strip()
+    if not api_key:
+        raise RuntimeError('OPENAI_API_KEY is missing in BE/.env')
+    return OpenAI(api_key=api_key)
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
@@ -10,9 +22,7 @@ print(f"🔑 API KEY 확인: {api_key[:5]}*****") # 키가 제대로 로드되�
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def analyze_contract(data: dict) -> dict:
-    """
-    텍스트 또는 이미지 데이터를 받아 GPT-4o에게 분석을 요청합니다.
-    """
+    """텍스트 또는 이미지 데이터를 받아 계약 조항을 분석합니다."""
     system_prompt = """
     너는 전문 변호사야. 제공된 계약서(텍스트 또는 이미지)를 분석해서 독소 조항을 찾아줘.
     반드시 아래 JSON 포맷으로만 응답해:
@@ -25,26 +35,45 @@ def analyze_contract(data: dict) -> dict:
 
     content = [{"type": "text", "text": "이 계약서를 분석해서 독소 조항을 찾아줘."}]
 
-    if data["type"] == "text":
-        content[0]["text"] += f"\n\n계약서 내용:\n{data['content'][:15000]}"
+    if data.get('type') == 'text':
+        text_body = (data.get('content') or '')[:15000]
+        content[0]['text'] += f"\n\n계약서 내용:\n{text_body}"
     else:
-        # 이미지 분석 (첫 3페이지만 샘플링하여 비용/속도 최적화)
-        for img_base64 in data["content"][:3]:
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{img_base64}"}
-            })
+        for img_base64 in (data.get('content') or [])[:3]:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{img_base64}"},
+                }
+            )
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini", # Vision 지원 및 가성비 모델
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": content}
-            ],
-            response_format={"type": "json_object"}
-        )
-        return json.loads(response.choices[0].message.content)
-    except Exception as e:
-        print(f"❌ 분석 에러: {e}")
-        return {"clauses": []} # 실패 시 빈 리스트 반환
+    client = _get_client()
+    response = client.chat.completions.create(
+        model='gpt-4o-mini',
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": content},
+        ],
+        response_format={"type": "json_object"},
+    )
+
+    raw = response.choices[0].message.content or '{}'
+    result = json.loads(raw)
+
+    if not isinstance(result, dict) or not isinstance(result.get('clauses'), list):
+        raise RuntimeError("Invalid AI response format: 'clauses' list is missing.")
+
+    if len(result['clauses']) == 0:
+        return {
+            'clauses': [
+                {
+                    'clause_number': '요약',
+                    'title': '분석 결과',
+                    'risk_level': 'LOW',
+                    'summary': '문서에서 특정 독소 조항을 식별하지 못했습니다. 원문 품질 또는 스캔 상태를 확인해 주세요.',
+                    'suggestion': '텍스트 추출이 잘 되는 PDF로 다시 업로드하거나 스캔 해상도를 높여 재시도하세요.',
+                }
+            ]
+        }
+
+    return result
