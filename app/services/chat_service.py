@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.models.contract import ChatMessage, ChatSession
-from app.rag.retriever import build_contract_context
+from app.rag.retriever import retrieve_relevant_context
 from app.services.analyzer import _get_client
 
 SYSTEM_PROMPT_TEMPLATE = """너는 "읽계 AI"라는 법률 계약서 분석 AI 상담사야.
@@ -67,7 +67,10 @@ def chat_with_context(
     user_message: str,
     session_id: Optional[uuid.UUID] = None,
     document_id: Optional[uuid.UUID] = None,
-) -> Tuple[ChatSession, ChatMessage]:
+    top_k: int = 6,
+    min_similarity: float = 0.35,
+    use_rerank: bool = True,
+) -> Tuple[ChatSession, ChatMessage, list]:
     """
     채팅 메시지 처리 전체 파이프라인:
     1. 세션 관리
@@ -80,9 +83,17 @@ def chat_with_context(
     session = get_or_create_session(db, user_id, session_id, document_id)
     effective_doc_id = document_id or session.document_id
 
-    # 2. 계약서 컨텍스트 구성
-    context = build_contract_context(db, user_id, effective_doc_id)
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
+    # 2. 질문 기반 벡터 검색 컨텍스트 구성 (실패 시 내부 fallback)
+    retrieval = retrieve_relevant_context(
+        db=db,
+        user_id=user_id,
+        query_text=user_message,
+        document_id=effective_doc_id,
+        top_k=top_k,
+        min_similarity=min_similarity,
+        use_rerank=use_rerank,
+    )
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=retrieval.context)
 
     # 3. 대화 히스토리 로드
     history = (
@@ -138,4 +149,4 @@ def chat_with_context(
     if len(history) == 0:
         session.title = user_message[:50]
 
-    return session, assistant_msg
+    return session, assistant_msg, retrieval.citations

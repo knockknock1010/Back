@@ -1,4 +1,4 @@
-﻿from typing import List
+﻿from typing import List, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import contract, schemas
+from app.rag.vectorstore import backfill_user_embeddings, upsert_clause_embedding
 from app.routers.auth import get_current_user
 from app.services.analyzer import analyze_contract
 from app.services.pdf_parser import extract_content_from_pdf
@@ -104,6 +105,15 @@ async def analyze_document(
                 suggestion=item.get('suggestion', ''),
             )
             db.add(new_analysis)
+            db.flush()
+
+            upsert_clause_embedding(
+                db=db,
+                clause=new_clause,
+                analysis=new_analysis,
+                user_id=current_user.id,
+                document_id=new_doc.id,
+            )
 
         db.refresh(new_doc)
         return schemas.DocumentResponse(
@@ -138,3 +148,19 @@ def get_analysis_detail(document_id: uuid.UUID, db: Session = Depends(get_db)):
         )
 
     return {'filename': doc.filename, 'analysis': results}
+
+
+@router.post('/backfill-embeddings')
+def backfill_embeddings(
+    document_id: Optional[uuid.UUID] = None,
+    db: Session = Depends(get_db),
+    current_user: contract.User = Depends(get_current_user),
+):
+    """기존 분석 데이터에 대해 임베딩을 재생성한다."""
+    count = backfill_user_embeddings(
+        db=db,
+        user_id=current_user.id,
+        document_id=document_id,
+    )
+    return {'indexed_count': count}
+

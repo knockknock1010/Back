@@ -44,6 +44,9 @@ class ChatRequest(BaseModel):
     message: str
     session_id: Optional[uuid.UUID] = None
     document_id: Optional[uuid.UUID] = None
+    top_k: Optional[int] = None
+    min_similarity: Optional[float] = None
+    use_rerank: Optional[bool] = None
 
 class ChatMessageResponse(BaseModel):
     id: uuid.UUID
@@ -53,9 +56,21 @@ class ChatMessageResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class ChatCitation(BaseModel):
+    clause_id: uuid.UUID
+    document_id: uuid.UUID
+    document_filename: str
+    clause_number: str
+    clause_title: str
+    risk_level: str
+    score: float
+
+
 class ChatResponse(BaseModel):
     session_id: uuid.UUID
     message: ChatMessageResponse
+    citations: List[ChatCitation] = []
 
 class ChatSessionResponse(BaseModel):
     id: uuid.UUID

@@ -76,6 +76,23 @@ class ClauseAnalysis(Base):
     
     clause = relationship("Clause", back_populates="analysis")
 
+
+class ClauseEmbedding(Base):
+    __tablename__ = "clause_embeddings"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    clause_id = Column(GUID(), ForeignKey("clauses.id"), unique=True, index=True)
+    user_id = Column(GUID(), ForeignKey("users.id"), index=True)
+    document_id = Column(GUID(), ForeignKey("documents.id"), index=True)
+    embedding_model = Column(String, default="text-embedding-3-small")
+    embedding_json = Column(Text)  # JSON serialized float list
+    content = Column(Text)  # embedding source text
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    clause = relationship("Clause")
+    user = relationship("User")
+    document = relationship("Document")
+
 # 4. 채팅 세션 테이블
 class ChatSession(Base):
     __tablename__ = "chat_sessions"

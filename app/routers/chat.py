@@ -36,12 +36,19 @@ def send_message(
             raise HTTPException(status_code=404, detail="해당 문서를 찾을 수 없습니다.")
 
     try:
-        session, assistant_msg = chat_with_context(
+        top_k = req.top_k if req.top_k is not None else 6
+        min_similarity = req.min_similarity if req.min_similarity is not None else 0.35
+        use_rerank = req.use_rerank if req.use_rerank is not None else True
+
+        session, assistant_msg, citations = chat_with_context(
             db=db,
             user_id=current_user.id,
             user_message=req.message.strip(),
             session_id=req.session_id,
             document_id=req.document_id,
+            top_k=max(1, min(top_k, 20)),
+            min_similarity=max(-1.0, min(min_similarity, 1.0)),
+            use_rerank=use_rerank,
         )
 
         return schemas.ChatResponse(
@@ -52,6 +59,18 @@ def send_message(
                 content=assistant_msg.content,
                 created_at=assistant_msg.created_at,
             ),
+            citations=[
+                schemas.ChatCitation(
+                    clause_id=item.clause_id,
+                    document_id=item.document_id,
+                    document_filename=item.document_filename,
+                    clause_number=item.clause_number,
+                    clause_title=item.clause_title,
+                    risk_level=item.risk_level,
+                    score=item.score,
+                )
+                for item in citations
+            ],
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"상담 처리 중 오류: {e}")
