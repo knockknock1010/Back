@@ -3,91 +3,78 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
 from pathlib import Path
-import shutil
 import os
 import uuid
+import shutil
 
-# 기존 DB 의존성 및 모델 임포트
 from app.core.database import get_db
 from app.models.contract import Document, Clause, ClauseAnalysis, User
 from app.models.schemas import DocumentResponse
 from app.routers.auth import get_current_user
 
-# ★ 방금 만든 서비스 로직 임포트
-from app.services.law_advisor import analyze_contract_with_assistant_rag
+from app.services.law_advisor import analyze_work_contract
 
 router = APIRouter(
-    prefix="/api/assistant",
-    tags=["Assistant Analysis"], # Swagger에서 구분되기 쉽게 태그 설정
+    prefix="/api/assistant", # 혹은 /api/labor 로 변경하셔도 좋습니다.
+    tags=["Labor Law Analysis"],
 )
 
 @router.post("/analyze", response_model=DocumentResponse)
-async def analyze_document_by_assistant(
+async def analyze_labor_contract_endpoint(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    [Assistant 전용] 계약서 파일을 업로드하면 RAG 기반 AI가 분석하고 결과를 저장합니다.
-    """
-    
-    # 1. 임시 파일 저장
     temp_dir = Path("temp_files")
     temp_dir.mkdir(exist_ok=True)
-    temp_file_path = temp_dir / f"assistant_{file.filename}"
+    temp_file_path = temp_dir / f"labor_{uuid.uuid4()}_{file.filename}"
 
     try:
         with open(temp_file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
+            shutil.copyfileobj(file.file, buffer)
 
-        # 2. AI 분석 서비스 호출 (RAG)
-        # 결과값은 긴 Markdown 텍스트입니다.
-        ai_result_text = analyze_contract_with_assistant_rag(str(temp_file_path))
+        # ★ AI 분석 호출 (JSON 문자열 반환)
+        ai_result_json = analyze_work_contract(str(temp_file_path))
 
-        # 3. DB 저장 (팀원 DB 스키마 준수)
-        
-        # 3-1. Document 생성
+        # DB 저장 (Document)
         new_doc = Document(
             id=uuid.uuid4(),
             filename=file.filename,
             owner_id=current_user.id,
-            status='done', # 분석 완료 상태
+            status='done',
         )
         db.add(new_doc)
         db.flush()
 
-        # 3-2. Clause 생성 (종합 분석용 1개 항목)
-        # Assistant는 전체 텍스트를 주므로 '제1조'처럼 쪼개기보다 통으로 저장하는게 안전합니다.
+        # Clause 저장 (종합 리포트용 1개만 생성)
         new_clause = Clause(
             id=uuid.uuid4(),
             document_id=new_doc.id,
-            clause_number="종합 분석", 
-            title="법률 자문관(Assistant) 분석 리포트",
-            body="전체 분석 결과는 '수정 제안' 란을 참고하세요.", 
+            clause_number="계약 종합 분석",
+            title="AI 법률 자문관 분석 리포트",
+            body="첨부된 계약서 원본 참조",
         )
         db.add(new_clause)
         db.flush()
 
-        # 3-3. Analysis 생성 (결과 매핑)
-        # 텍스트에 '위험', '주의' 키워드가 있으면 HIGH로 표시
+        # 위험도 체크 (JSON 문자열 내 키워드 검색)
         risk_level = 'LOW'
-        if any(keyword in ai_result_text for keyword in ["위험", "주의", "위반", "불리"]):
+        if '"risk_level": "HIGH"' in ai_result_json:
             risk_level = 'HIGH'
 
+        # Analysis 저장 (JSON 통째로 suggestion 필드에 저장)
         new_analysis = ClauseAnalysis(
             id=uuid.uuid4(),
             clause_id=new_clause.id,
             risk_level=risk_level,
-            summary="AI 법률 자문관이 근로기준법 등을 근거로 분석한 결과입니다.",
-            suggestion=ai_result_text, # ★ 여기에 전체 분석 내용을 저장
+            summary="계약 종류에 따른 법률 정밀 분석 결과입니다.",
+            suggestion=ai_result_json, # ★ JSON 문자열 저장
         )
         db.add(new_analysis)
 
         db.commit()
         db.refresh(new_doc)
 
-        # 4. 응답 반환 (schemas.DocumentResponse 형식 준수)
         return DocumentResponse(
             id=new_doc.id,
             filename=new_doc.filename,
@@ -98,9 +85,8 @@ async def analyze_document_by_assistant(
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Assistant 분석 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"노동법 분석 실패: {str(e)}")
     
     finally:
-        # 5. 뒷정리
         if temp_file_path.exists():
             os.remove(temp_file_path)
