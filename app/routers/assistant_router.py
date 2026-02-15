@@ -12,8 +12,7 @@ from app.models.contract import Document, Clause, ClauseAnalysis, User
 from app.models.schemas import DocumentResponse
 from app.routers.auth import get_current_user
 
-# ★ 함수 이름 변경 확인 (기존 analyze_contract -> analyze_labor_contract)
-from app.services.law_advisor import analyze_labor_contract 
+from app.services.law_advisor import analyze_work_contract
 
 router = APIRouter(
     prefix="/api/assistant", # 혹은 /api/labor 로 변경하셔도 좋습니다.
@@ -35,7 +34,7 @@ async def analyze_labor_contract_endpoint(
             shutil.copyfileobj(file.file, buffer)
 
         # ★ AI 분석 호출 (JSON 문자열 반환)
-        ai_result_json = analyze_labor_contract(str(temp_file_path))
+        ai_result_json = analyze_work_contract(str(temp_file_path))
 
         # DB 저장 (Document)
         new_doc = Document(
