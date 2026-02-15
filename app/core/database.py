@@ -16,8 +16,9 @@ if DATABASE_URL:
     # MySQL: mysql+pymysql://user:pass@host:3306/dbname
     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
 else:
-    # 로컬 개발용 SQLite 폴백
-    DATABASE_URL = "sqlite:///./readgye.db"
+    # 로컬/Railway SQLite 폴백 (프로젝트 루트 기준 절대 경로)
+    _db_path = Path(__file__).resolve().parents[2] / "readgye.db"
+    DATABASE_URL = f"sqlite:///{_db_path}"
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

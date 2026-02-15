@@ -5,6 +5,7 @@ WORKDIR /app
 # 시스템 패키지 (PyMuPDF 빌드 의존성)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
