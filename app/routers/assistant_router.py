@@ -12,11 +12,12 @@ from app.models.contract import Document, Clause, ClauseAnalysis, User
 from app.models.schemas import DocumentResponse
 from app.routers.auth import get_current_user
 
-from app.services.law_advisor import analyze_work_contract
+# ★ [변경] 통합 서비스에서 함수 가져오기
+from app.services.ai_advisor import analyze_contract
 
 router = APIRouter(
-    prefix="/api/assistant", # 혹은 /api/labor 로 변경하셔도 좋습니다.
-    tags=["Labor Law Analysis"],
+    prefix="/api/assistant",
+    tags=["Labor Law Analysis"], # 기존 태그 유지
 )
 
 @router.post("/analyze", response_model=DocumentResponse)
@@ -25,18 +26,24 @@ async def analyze_labor_contract_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    [Legacy 호환용] 근로계약서 분석 엔드포인트
+    프론트엔드 수정 없이 작동하도록 기존 URL 유지 + 내부 로직은 신규 통합 서비스(WORK 모드) 사용
+    """
     temp_dir = Path("temp_files")
     temp_dir.mkdir(exist_ok=True)
     temp_file_path = temp_dir / f"labor_{uuid.uuid4()}_{file.filename}"
 
     try:
+        # 1. 파일 임시 저장
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # ★ AI 분석 호출 (JSON 문자열 반환)
-        ai_result_json = analyze_work_contract(str(temp_file_path))
+        # ★ [변경] 신규 통합 서비스 호출 (카테고리를 'WORK'로 고정)
+        # 기존 law_advisor.analyze_work_contract() 대체
+        ai_result_json = analyze_contract(str(temp_file_path), "WORK")
 
-        # DB 저장 (Document)
+        # 2. DB 저장 (Document) - 기존 로직 유지
         new_doc = Document(
             id=uuid.uuid4(),
             filename=file.filename,
@@ -46,29 +53,29 @@ async def analyze_labor_contract_endpoint(
         db.add(new_doc)
         db.flush()
 
-        # Clause 저장 (종합 리포트용 1개만 생성)
+        # 3. Clause 저장
         new_clause = Clause(
             id=uuid.uuid4(),
             document_id=new_doc.id,
             clause_number="계약 종합 분석",
-            title="AI 법률 자문관 분석 리포트",
+            title="일터(Work) 법률 자문 리포트", # 제목은 최신화
             body="첨부된 계약서 원본 참조",
         )
         db.add(new_clause)
         db.flush()
 
-        # 위험도 체크 (JSON 문자열 내 키워드 검색)
+        # 4. 위험도 체크
         risk_level = 'LOW'
         if '"risk_level": "HIGH"' in ai_result_json:
             risk_level = 'HIGH'
 
-        # Analysis 저장 (JSON 통째로 suggestion 필드에 저장)
+        # 5. Analysis 저장
         new_analysis = ClauseAnalysis(
             id=uuid.uuid4(),
             clause_id=new_clause.id,
             risk_level=risk_level,
-            summary="계약 종류에 따른 법률 정밀 분석 결과입니다.",
-            suggestion=ai_result_json, # ★ JSON 문자열 저장
+            summary="근로기준법 및 하도급법 기반 정밀 분석 결과",
+            suggestion=ai_result_json,
         )
         db.add(new_analysis)
 
@@ -85,7 +92,7 @@ async def analyze_labor_contract_endpoint(
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"노동법 분석 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)}")
     
     finally:
         if temp_file_path.exists():
