@@ -15,6 +15,7 @@ class UserResponse(BaseModel):
     id: uuid.UUID  # str 대신 uuid.UUID로 변경
     email: str
     name: str
+    is_admin: bool = False
     class Config:
         from_attributes = True
 

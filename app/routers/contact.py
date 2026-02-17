@@ -1,22 +1,39 @@
-import os
-import smtplib
+import uuid
+from typing import Dict, List, Optional
 from datetime import datetime
-from email.mime.text import MIMEText
-from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-from app.models.contract import User
+from app.core.database import get_db
+from app.models.contract import User, ContactInquiry
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/contact", tags=["Contact"])
 
 
+# ─── 요청/응답 스키마 ───
+
 class ContactRequest(BaseModel):
     category: str = Field(min_length=1, max_length=50)
     title: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1, max_length=2000)
+
+
+class ContactResponse(BaseModel):
+    id: str
+    user_name: str
+    user_email: str
+    category: str
+    category_label: str
+    title: str
+    content: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
 
 
 CONTACT_CATEGORY_LABELS: Dict[str, str] = {
@@ -28,80 +45,89 @@ CONTACT_CATEGORY_LABELS: Dict[str, str] = {
 }
 
 
-def _send_contact_email(
-    *,
-    sender_email: str,
-    recipient_email: str,
-    subject: str,
-    body: str,
-):
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port_raw = os.getenv("SMTP_PORT", "587")
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+# ─── 관리자 확인 의존성 ───
 
-    if not smtp_host or not smtp_user or not smtp_password:
-        raise HTTPException(
-            status_code=500,
-            detail="메일 서버 설정이 누락되었습니다. 관리자에게 문의해 주세요.",
-        )
+def get_admin_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
+    return current_user
 
-    try:
-        smtp_port = int(smtp_port_raw)
-    except ValueError as exc:
-        raise HTTPException(status_code=500, detail="SMTP_PORT 설정이 올바르지 않습니다.") from exc
 
-    message = MIMEText(body, _charset="utf-8")
-    message["Subject"] = subject
-    message["From"] = sender_email
-    message["To"] = recipient_email
-
-    try:
-        if smtp_use_tls:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(smtp_user, smtp_password)
-                server.sendmail(sender_email, [recipient_email], message.as_string())
-        else:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
-                server.login(smtp_user, smtp_password)
-                server.sendmail(sender_email, [recipient_email], message.as_string())
-    except Exception as exc:
-        print(f"[CONTACT ERROR] 메일 발송 실패: {type(exc).__name__}: {exc}")
-        raise HTTPException(
-            status_code=502,
-            detail=f"문의 메일 발송에 실패했습니다: {exc}",
-        ) from exc
-
+# ─── 사용자: 문의 접수 ───
 
 @router.post("")
 def submit_contact(
     payload: ContactRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    support_email = os.getenv("SUPPORT_EMAIL_TO", "support@readgye.com")
-    sender_email = os.getenv("SMTP_SENDER_EMAIL", os.getenv("SMTP_USER", ""))
-    category_label = CONTACT_CATEGORY_LABELS.get(payload.category, payload.category)
-
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    subject = f"[Readgye 문의] {payload.title}"
-    body = (
-        f"문의 유형: {category_label}\n"
-        f"작성자: {current_user.name} ({current_user.email})\n"
-        f"접수 시각: {timestamp}\n"
-        f"\n"
-        f"제목: {payload.title}\n"
-        f"\n"
-        f"내용:\n{payload.content}\n"
+    inquiry = ContactInquiry(
+        id=uuid.uuid4(),
+        user_id=current_user.id,
+        category=payload.category,
+        title=payload.title,
+        content=payload.content,
     )
+    db.add(inquiry)
+    db.commit()
 
-    _send_contact_email(
-        sender_email=sender_email,
-        recipient_email=support_email,
-        subject=subject,
-        body=body,
-    )
     return {"ok": True}
+
+
+# ─── 관리자: 문의 목록 조회 ───
+
+@router.get("/admin", response_model=List[ContactResponse])
+def list_inquiries(
+    status: Optional[str] = Query(None, description="pending / replied / closed"),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    query = db.query(ContactInquiry).order_by(ContactInquiry.created_at.desc())
+
+    if status:
+        query = query.filter(ContactInquiry.status == status)
+
+    inquiries = query.all()
+
+    return [
+        ContactResponse(
+            id=str(inq.id),
+            user_name=inq.user.name or "",
+            user_email=inq.user.email or "",
+            category=inq.category,
+            category_label=CONTACT_CATEGORY_LABELS.get(inq.category, inq.category),
+            title=inq.title,
+            content=inq.content,
+            status=inq.status,
+            created_at=inq.created_at,
+        )
+        for inq in inquiries
+    ]
+
+
+# ─── 관리자: 문의 상태 변경 ───
+
+class StatusUpdateRequest(BaseModel):
+    status: str = Field(pattern="^(pending|replied|closed)$")
+
+
+@router.patch("/admin/{inquiry_id}")
+def update_inquiry_status(
+    inquiry_id: str,
+    payload: StatusUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    inquiry = db.query(ContactInquiry).filter(
+        ContactInquiry.id == inquiry_id
+    ).first()
+
+    if not inquiry:
+        raise HTTPException(status_code=404, detail="문의를 찾을 수 없습니다.")
+
+    inquiry.status = payload.status
+    db.commit()
+
+    return {"ok": True, "status": inquiry.status}
