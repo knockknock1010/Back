@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.routers.auth import get_current_user
 from app.models.contract import (
     ChatSession,
+    ChatMessage,
     Clause,
     ClauseAnalysis,
     ClauseEmbedding,
@@ -52,7 +53,14 @@ async def delete_document(
         # (0) 알림/임베딩/채팅 세션 등 문서 직접 참조 데이터부터 정리
         db.query(Notification).filter(Notification.document_id == target_uuid).delete()
         db.query(ClauseEmbedding).filter(ClauseEmbedding.document_id == target_uuid).delete()
-        db.query(ChatSession).filter(ChatSession.document_id == target_uuid).delete()
+
+        # 채팅 세션 삭제 전 메시지를 먼저 삭제 (FK 제약 대응)
+        sessions = db.query(ChatSession).filter(ChatSession.document_id == target_uuid).all()
+        session_ids = [s.id for s in sessions]
+        if session_ids:
+            for session_id in session_ids:
+                db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+            db.query(ChatSession).filter(ChatSession.document_id == target_uuid).delete()
 
         # (1) 해당 문서의 조항들(Clauses) 찾기
         clauses = db.query(Clause).filter(Clause.document_id == target_uuid).all()
@@ -75,4 +83,4 @@ async def delete_document(
     except Exception as e:
         db.rollback()
         print(f"[ERROR] 문서 삭제 실패: {e}")
-        raise HTTPException(status_code=500, detail="문서 삭제 중 오류가 발생했습니다.")
+        raise HTTPException(status_code=500, detail=f"문서 삭제 중 오류가 발생했습니다: {e}")
