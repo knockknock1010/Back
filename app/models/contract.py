@@ -133,3 +133,20 @@ class Notification(Base):
 
     user = relationship("User")
     document = relationship("Document")
+
+
+class NotificationSetting(Base):
+    __tablename__ = "notification_settings"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id"), unique=True, index=True, nullable=False)
+    push_enabled = Column(Boolean, default=True, nullable=False)
+    analysis_complete = Column(Boolean, default=True, nullable=False)
+    risk_alert = Column(Boolean, default=True, nullable=False)
+    marketing_push = Column(Boolean, default=False, nullable=False)
+    email_enabled = Column(Boolean, default=True, nullable=False)
+    email_report = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    user = relationship("User")
