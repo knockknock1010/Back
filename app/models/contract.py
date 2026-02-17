@@ -27,6 +27,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True)
     hashed_password = Column(String(255))
     name = Column(String(100))
+    is_admin = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     # 문서와의 관계 설정 (사용자가 삭제되면 문서도 삭제? or 유지? -> 일단 유지)
@@ -148,5 +149,19 @@ class NotificationSetting(Base):
     email_report = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    user = relationship("User")
+
+
+class ContactInquiry(Base):
+    __tablename__ = "contact_inquiries"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id"), index=True, nullable=False)
+    category = Column(String(50), nullable=False)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    status = Column(String(20), default="pending")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     user = relationship("User")
