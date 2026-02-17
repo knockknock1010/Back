@@ -79,3 +79,15 @@ class ChatSessionResponse(BaseModel):
     created_at: datetime
     class Config:
         from_attributes = True
+
+
+class NotificationResponse(BaseModel):
+    id: uuid.UUID
+    document_id: Optional[uuid.UUID] = None
+    title: str
+    message: str
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.models.contract import Document, Clause, ClauseAnalysis, User
 from app.models.schemas import DocumentResponse
 from app.routers.auth import get_current_user
+from app.services.notification_service import create_analysis_done_notification
 
 # ★ 만능 서비스 함수 임포트
 from app.services.ai_advisor import analyze_contract
@@ -86,6 +87,11 @@ async def _process_analysis(file: UploadFile, db: Session, user: User, category:
             # AI가 "이건 계약서가 아닙니다"라고 판단한 경우
             if contract_type == "NOT_A_CONTRACT":
                 error_msg = gatekeeper_dict.get("summary", {}).get("overall_comment", "유효한 계약서 파일이 아닙니다.")
+                raise HTTPException(status_code=400, detail=error_msg)
+
+            # 카테고리 불일치
+            if contract_type == "MISMATCH_CATEGORY":
+                error_msg = gatekeeper_dict.get("summary", {}).get("overall_comment", "선택한 카테고리와 문서가 일치하지 않습니다.")
                 raise HTTPException(status_code=400, detail=error_msg)
 
         except json.JSONDecodeError as jde:
@@ -176,15 +182,30 @@ async def _process_analysis(file: UploadFile, db: Session, user: User, category:
             db.add(new_clause)
             db.flush()
 
+            # legal_basis를 tags에 저장
+            tags_data = []
+            legal_basis = item.get("legal_basis", "")
+            if legal_basis:
+                tags_data.append({"legal_basis": legal_basis})
+
             new_analysis = ClauseAnalysis(
                 id=uuid.uuid4(),
                 clause_id=new_clause.id,
                 risk_level=clause_risk,
                 summary=item.get("analysis", item.get("summary", "")),
                 suggestion=item.get("suggestion", ""),
+                tags=tags_data,
             )
             db.add(new_analysis)
             db.flush()
+
+        create_analysis_done_notification(
+            db=db,
+            user_id=user.id,
+            document_id=new_doc.id,
+            filename=new_doc.filename,
+            risk_count=risk_count,
+        )
 
         db.commit()
         db.refresh(new_doc)

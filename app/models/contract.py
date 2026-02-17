@@ -1,6 +1,6 @@
 # Back/models.py
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, JSON
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, JSON, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import TypeDecorator, CHAR
 from app.core.database import Base  # <--- ✅ app/core 폴더 안에 있는 것을 가져와야 함
@@ -118,3 +118,18 @@ class ChatMessage(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     session = relationship("ChatSession", back_populates="messages")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID(), ForeignKey("users.id"), index=True, nullable=False)
+    document_id = Column(GUID(), ForeignKey("documents.id"), nullable=True)
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    user = relationship("User")
+    document = relationship("Document")

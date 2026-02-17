@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.models.contract import Document, Clause, ClauseAnalysis, User
 from app.models.schemas import DocumentResponse
 from app.routers.auth import get_current_user
+from app.services.notification_service import create_analysis_done_notification
 
 # ★ 만능 서비스 함수 임포트
 from app.services.ai_advisor import analyze_contract
@@ -79,6 +80,15 @@ async def analyze_estate(
             suggestion=ai_result_json,
         )
         db.add(new_analysis)
+        risk_count = 1 if risk_level == 'HIGH' else 0
+
+        create_analysis_done_notification(
+            db=db,
+            user_id=current_user.id,
+            document_id=new_doc.id,
+            filename=new_doc.filename,
+            risk_count=risk_count,
+        )
 
         db.commit()
         db.refresh(new_doc)
@@ -88,7 +98,7 @@ async def analyze_estate(
             filename=new_doc.filename,
             status=new_doc.status,
             created_at=new_doc.created_at,
-            risk_count=1 if risk_level == 'HIGH' else 0,
+            risk_count=risk_count,
         )
 
     except Exception as e:

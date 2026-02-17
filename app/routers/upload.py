@@ -9,6 +9,7 @@ from app.models import contract, schemas
 from app.rag.vectorstore import backfill_user_embeddings, upsert_clause_embedding
 from app.routers.auth import get_current_user
 from app.services.analyzer import analyze_contract
+from app.services.notification_service import create_analysis_done_notification
 from app.services.pdf_parser import extract_content_from_pdf
 
 router = APIRouter(prefix='/api/analyze', tags=['Analyze'])
@@ -115,6 +116,14 @@ async def analyze_document(
                 document_id=new_doc.id,
             )
 
+        create_analysis_done_notification(
+            db=db,
+            user_id=current_user.id,
+            document_id=new_doc.id,
+            filename=new_doc.filename,
+            risk_count=risk_count,
+        )
+
         db.refresh(new_doc)
         return schemas.DocumentResponse(
             id=new_doc.id,
@@ -148,6 +157,14 @@ def get_analysis_detail(
 
     results = []
     for clause in doc.clauses:
+        # tags에서 legal_basis 추출
+        legal_basis = ''
+        if clause.analysis and clause.analysis.tags:
+            for tag in clause.analysis.tags:
+                if isinstance(tag, dict) and 'legal_basis' in tag:
+                    legal_basis = tag['legal_basis']
+                    break
+
         results.append(
             {
                 'clause_number': clause.clause_number,
@@ -156,6 +173,7 @@ def get_analysis_detail(
                 'risk_level': clause.analysis.risk_level if clause.analysis else 'UNKNOWN',
                 'summary': clause.analysis.summary if clause.analysis else '',
                 'suggestion': clause.analysis.suggestion if clause.analysis else '',
+                'legal_basis': legal_basis,
             }
         )
 
