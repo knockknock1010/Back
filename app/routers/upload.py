@@ -152,6 +152,7 @@ def get_analysis_detail(
             {
                 'clause_number': clause.clause_number,
                 'title': clause.title,
+                'original_text': clause.body or '',
                 'risk_level': clause.analysis.risk_level if clause.analysis else 'UNKNOWN',
                 'summary': clause.analysis.summary if clause.analysis else '',
                 'suggestion': clause.analysis.suggestion if clause.analysis else '',

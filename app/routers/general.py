@@ -106,7 +106,20 @@ async def _process_analysis(file: UploadFile, db: Session, user: User, category:
             report_title = "법률 자문 리포트"
             summary_text = "AI 법률 자문 결과"
 
-        # 4. DB 저장 로직 (Document -> Clause -> Analysis)
+        # 4. AI 결과 JSON 파싱
+        try:
+            result_dict = json.loads(ai_result_json)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=502, detail="AI 분석 결과를 파싱할 수 없습니다.")
+
+        clauses_data = result_dict.get("clauses", [])
+        summary_data = result_dict.get("summary", {})
+        overall_comment = summary_data.get("overall_comment", "")
+
+        if not isinstance(clauses_data, list) or len(clauses_data) == 0:
+            raise HTTPException(status_code=502, detail="AI 분석 결과에 조항 정보가 없습니다.")
+
+        # 5. DB 저장 (Document -> Clause별 개별 저장)
         new_doc = Document(
             id=uuid.uuid4(),
             filename=file.filename,
@@ -116,29 +129,59 @@ async def _process_analysis(file: UploadFile, db: Session, user: User, category:
         db.add(new_doc)
         db.flush()
 
-        new_clause = Clause(
+        # 종합 요약 조항 저장
+        summary_clause = Clause(
             id=uuid.uuid4(),
             document_id=new_doc.id,
             clause_number="계약 종합 분석",
             title=report_title,
             body="첨부된 계약서 원본 참조",
         )
-        db.add(new_clause)
+        db.add(summary_clause)
         db.flush()
 
-        # 위험도 체크
-        risk_level = 'LOW'
-        if '"risk_level": "HIGH"' in ai_result_json:
-            risk_level = 'HIGH'
+        summary_risk = summary_data.get("total_score", 0)
+        summary_risk_level = 'HIGH' if summary_risk == 0 or summary_data.get("risk_count", 0) > 0 else 'LOW'
 
-        new_analysis = ClauseAnalysis(
+        summary_analysis = ClauseAnalysis(
             id=uuid.uuid4(),
-            clause_id=new_clause.id,
-            risk_level=risk_level,
+            clause_id=summary_clause.id,
+            risk_level=summary_risk_level,
             summary=summary_text,
-            suggestion=ai_result_json,
+            suggestion=overall_comment,
         )
-        db.add(new_analysis)
+        db.add(summary_analysis)
+        db.flush()
+
+        # 개별 조항 저장
+        risk_count = 0
+        for item in clauses_data:
+            if not isinstance(item, dict):
+                continue
+
+            clause_risk = item.get("risk_level", "LOW")
+            if clause_risk == "HIGH":
+                risk_count += 1
+
+            new_clause = Clause(
+                id=uuid.uuid4(),
+                document_id=new_doc.id,
+                clause_number=item.get("article_number", item.get("clause_number", "미분류")),
+                title=item.get("title", "제목 없음"),
+                body=item.get("original_text", item.get("body", "")),
+            )
+            db.add(new_clause)
+            db.flush()
+
+            new_analysis = ClauseAnalysis(
+                id=uuid.uuid4(),
+                clause_id=new_clause.id,
+                risk_level=clause_risk,
+                summary=item.get("analysis", item.get("summary", "")),
+                suggestion=item.get("suggestion", ""),
+            )
+            db.add(new_analysis)
+            db.flush()
 
         db.commit()
         db.refresh(new_doc)
@@ -148,7 +191,7 @@ async def _process_analysis(file: UploadFile, db: Session, user: User, category:
             filename=new_doc.filename,
             status=new_doc.status,
             created_at=new_doc.created_at,
-            risk_count=1 if risk_level == 'HIGH' else 0,
+            risk_count=risk_count,
         )
 
     except HTTPException as he:
