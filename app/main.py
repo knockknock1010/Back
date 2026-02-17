@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import engine, Base
-from app.routers import auth, upload, chat, general, real_estate, assistant_router, notifications, contact
+from app.routers import auth, upload, chat, general, real_estate, assistant_router, notifications, contact, user
 
 # 로깅 설정
 logging.basicConfig(
@@ -36,6 +36,7 @@ app.include_router(general.router)
 app.include_router(real_estate.router)
 app.include_router(assistant_router.router)
 app.include_router(notifications.router)
+app.include_router(user.router)
 app.include_router(contact.router)
 
 @app.get("/")
