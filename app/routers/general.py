@@ -7,6 +7,7 @@ import os
 import uuid
 import shutil
 import json # ★ JSON 파싱을 위해 추가
+from urllib.parse import unquote
 
 from app.core.database import get_db
 from app.models.contract import Document, Clause, ClauseAnalysis, User
@@ -129,9 +130,11 @@ async def _process_analysis(file: UploadFile, db: Session, user: User, category:
             raise HTTPException(status_code=502, detail="AI 분석 결과에 조항 정보가 없습니다.")
 
         # 5. DB 저장 (Document -> Clause별 개별 저장)
+        safe_filename = unquote(file.filename or 'unknown.pdf')
+
         new_doc = Document(
             id=uuid.uuid4(),
-            filename=file.filename,
+            filename=safe_filename,
             owner_id=user.id,
             status='done',
         )

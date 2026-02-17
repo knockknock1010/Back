@@ -1,5 +1,6 @@
 ﻿from typing import List, Optional
 import uuid
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -63,9 +64,11 @@ async def analyze_document(
         ai_result = analyze_contract(parsed_data)
         print(f"[DEBUG 3] AI 분석 결과 수신: {ai_result}")
 
+        safe_filename = unquote(file.filename or 'unknown.pdf')
+
         new_doc = contract.Document(
             id=uuid.uuid4(),
-            filename=file.filename,
+            filename=safe_filename,
             owner_id=current_user.id,
             status='done',
         )
