@@ -75,18 +75,21 @@ async def _process_analysis(file: UploadFile, db: Session, user: User, category:
 
         # 2. AI 분석 요청 (카테고리 전달)
         ai_result_json = analyze_contract(str(temp_file_path), category)
+        print(f"[DEBUG] AI 분석 결과 (앞 500자): {ai_result_json[:500]}")
 
         # ★ [Gatekeeper] 계약서가 아닌 파일 거르기 (GENERAL 모드 등에서 발생 가능)
         try:
-            result_dict = json.loads(ai_result_json)
-            contract_type = result_dict.get("summary", {}).get("contract_type_detected", "")
-            
+            gatekeeper_dict = json.loads(ai_result_json)
+            contract_type = gatekeeper_dict.get("summary", {}).get("contract_type_detected", "")
+            print(f"[DEBUG] contract_type_detected: {contract_type}")
+
             # AI가 "이건 계약서가 아닙니다"라고 판단한 경우
             if contract_type == "NOT_A_CONTRACT":
-                error_msg = result_dict.get("summary", {}).get("overall_comment", "유효한 계약서 파일이 아닙니다.")
+                error_msg = gatekeeper_dict.get("summary", {}).get("overall_comment", "유효한 계약서 파일이 아닙니다.")
                 raise HTTPException(status_code=400, detail=error_msg)
-                
-        except json.JSONDecodeError:
+
+        except json.JSONDecodeError as jde:
+            print(f"[DEBUG] Gatekeeper JSON 파싱 실패: {jde}")
             pass # JSON 파싱 에러나면 일단 진행 (기존 로직대로)
 
         # 3. 카테고리별 제목/요약 설정
