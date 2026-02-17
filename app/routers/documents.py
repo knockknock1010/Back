@@ -2,7 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.routers.auth import get_current_user
-from app.models.contract import Document, User, Clause, ClauseAnalysis
+from app.models.contract import (
+    ChatSession,
+    Clause,
+    ClauseAnalysis,
+    ClauseEmbedding,
+    Document,
+    Notification,
+    User,
+)
 import uuid
 
 # ★ 프론트엔드 요청 주소(/api/analyze)에 맞춤
@@ -40,7 +48,12 @@ async def delete_document(
                 detail="문서를 찾을 수 없거나 삭제 권한이 없습니다."
             )
 
-        # 2. 연관된 데이터 삭제 (Cascade 삭제가 DB에 설정 안 되어 있을 경우를 대비해 수동 삭제)
+        # 2. 연관된 데이터 삭제 (Cascade 미설정/DB FK 제약 대비 수동 삭제)
+        # (0) 알림/임베딩/채팅 세션 등 문서 직접 참조 데이터부터 정리
+        db.query(Notification).filter(Notification.document_id == target_uuid).delete()
+        db.query(ClauseEmbedding).filter(ClauseEmbedding.document_id == target_uuid).delete()
+        db.query(ChatSession).filter(ChatSession.document_id == target_uuid).delete()
+
         # (1) 해당 문서의 조항들(Clauses) 찾기
         clauses = db.query(Clause).filter(Clause.document_id == target_uuid).all()
         for clause in clauses:
