@@ -91,3 +91,10 @@ class NotificationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- [추가] 회원 정보 수정용 Schema ---
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    password: Optional[str] = None  # 비밀번호 변경을 원할 때만 보냄
+    current_password: str           # 보안을 위해 현재 비밀번호 확인 (필수)
