@@ -116,3 +116,13 @@ def upgrade_premium_demo(
     current_user.is_premium = True
     db.commit()
     return {"message": "프리미엄 업그레이드 성공!", "is_premium": True}
+
+@router.post("/polar/cancel-demo")
+def cancel_premium_demo(
+    current_user: contract.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """해커톤 시연용 강제 해지 API"""
+    current_user.is_premium = False
+    db.commit()
+    return {"message": "프리미엄 해지 성공!", "is_premium": False}
