@@ -5,6 +5,9 @@ from app.models import contract, schemas
 from app.core.security import verify_password, get_password_hash
 from app.routers.auth import get_current_user  # 기존 인증 로직 재사용
 from fastapi import Body
+import requests
+import os
+from fastapi.responses import HTMLResponse
 
 router = APIRouter(
     prefix="/api/users",
@@ -70,3 +73,87 @@ def change_password_legacy(
     db.commit()
     
     return {"message": "비밀번호가 성공적으로 변경되었습니다."}
+
+# TODO: 발급받은 Polar 토큰과 Product ID를 여기에 넣으세요! (보안을 위해 나중엔 .env로 빼는 것이 좋습니다)
+POLAR_ACCESS_TOKEN = os.getenv("POLAR_ACCESS_TOKEN")
+POLAR_PRODUCT_ID = os.getenv("POLAR_PRODUCT_ID")
+
+@router.post("/polar/checkout")
+def create_polar_checkout(
+    plan_type: str = Body(..., embed=True), # 👈 "monthly" 또는 "yearly" 수신
+    current_user: contract.User = Depends(get_current_user)
+):
+    # 플랜 타입에 따라 ID 선택
+    product_id = os.getenv("POLAR_YEARLY_PRODUCT_ID") if plan_type == "yearly" else os.getenv("POLAR_MONTHLY_PRODUCT_ID")
+    
+    url = "https://api.polar.sh/v1/checkouts/custom/"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('POLAR_ACCESS_TOKEN')}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "product_id": product_id, # 👈 선택된 ID 사용
+        "customer_email": current_user.email,
+        "success_url": "https://back-production-e1e1.up.railway.app/api/users/polar/success",
+        "metadata": {"user_id": str(current_user.id), "plan": plan_type}
+    }
+    
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if not response.ok:
+        print("🚨 Polar API 에러 원인:", response.text)
+        raise HTTPException(status_code=500, detail="결제창 생성에 실패했습니다.")
+        
+    data = response.json()
+    return {"checkout_url": data["url"]}
+
+# 💡 [해커톤 치트키 API]
+# 원래는 Polar의 Webhook을 통해 서버가 결제 성공 신호를 받아야 하지만, 
+# 로컬(127.0.0.1) 환경에서는 Polar가 우리 컴퓨터로 신호를 쏠 수 없습니다 (ngrok 필요).
+# 따라서 데모 발표를 위해 '강제로 프리미엄으로 업그레이드' 해주는 엔드포인트를 만듭니다.
+@router.post("/polar/upgrade-demo")
+def upgrade_premium_demo(
+    current_user: contract.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    current_user.is_premium = True
+    db.commit()
+    return {"message": "프리미엄 업그레이드 성공!", "is_premium": True}
+
+@router.post("/polar/cancel-demo")
+def cancel_premium_demo(
+    current_user: contract.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """해커톤 시연용 강제 해지 API"""
+    current_user.is_premium = False
+    db.commit()
+    return {"message": "프리미엄 해지 성공!", "is_premium": False}
+
+@router.get("/me", response_model=schemas.UserResponse)
+def get_me(current_user: contract.User = Depends(get_current_user)):
+    """현재 로그인한 유저의 최신 DB 정보를 반환합니다."""
+    return current_user
+
+@router.get("/polar/success")
+def polar_success():
+    """결제 성공 시 보여줄 안내 페이지"""
+    html_content = """
+    <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+        </head>
+        <body style="display:flex; justify-content:center; align-items:center; height:100vh; background-color:#f8f9fa; text-align:center; font-family:sans-serif;">
+            <div>
+                <h1 style="color:#2563eb; font-size:24px;">🎉 결제 완료!</h1>
+                <p style="font-size:16px; color:#4b5563; line-height:1.5;">프리미엄 플랜 구독이 완료되었습니다.</p>
+                <div style="margin-top:20px; padding:15px; background-color:#fee2e2; border-radius:8px;">
+                    <p style="font-weight:bold; color:#b91c1c; margin:0;">화면 상단의 'X' 또는 '완료' 버튼을 눌러<br>앱으로 돌아가주세요.</p>
+                </div>
+            </div>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)

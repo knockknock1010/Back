@@ -13,7 +13,7 @@ from app.services.analyzer import _get_client
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_TEMPLATE = """너는 "읽계 AI"라는 법률 계약서 분석 AI 상담사야.
+SYSTEM_PROMPT_TEMPLATE = """너는 "똑똑 AI"라는 법률 계약서 분석 AI 상담사야.
 
 역할:
 - 사용자가 업로드한 계약서의 분석 결과를 바탕으로 법률 관련 질문에 답변해.

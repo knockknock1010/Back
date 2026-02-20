@@ -1,6 +1,6 @@
 # app/models/schemas.py
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 import uuid
@@ -16,8 +16,9 @@ class UserResponse(BaseModel):
     email: str
     name: str
     is_admin: bool = False
-    class Config:
-        from_attributes = True
+    is_premium: bool = False
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
@@ -31,7 +32,7 @@ class DocumentResponse(BaseModel):
     created_at: datetime
     risk_count: int
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- Home Dashboard 관련 ---
 class HomeDashboardResponse(BaseModel):

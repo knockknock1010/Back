@@ -19,7 +19,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # TODO: 배포 시 allow_origins를 실제 프론트엔드 도메인으로 제한할 것
-# 예: allow_origins=["https://readgye.app", "https://readgye.vercel.app"]
+# 예: allow_origins=["https://knockknock.app", "https://knockknock.vercel.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,4 +42,4 @@ app.include_router(documents.router)
 
 @app.get("/")
 def read_root():
-    return {"Hello": "ReadGye Refactored Backend!"}
+    return {"Hello": "똑똑 (KnockKnock) Backend!"}
