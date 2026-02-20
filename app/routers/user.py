@@ -74,8 +74,8 @@ def change_password_legacy(
     return {"message": "비밀번호가 성공적으로 변경되었습니다."}
 
 # TODO: 발급받은 Polar 토큰과 Product ID를 여기에 넣으세요! (보안을 위해 나중엔 .env로 빼는 것이 좋습니다)
-POLAR_ACCESS_TOKEN = os.getenv("POLAR_ACCESS_TOKEN", "polar_여기에_토큰을_넣으세요")
-POLAR_PRODUCT_ID = os.getenv("POLAR_PRODUCT_ID", "pro_여기에_상품ID를_넣으세요")
+POLAR_ACCESS_TOKEN = os.getenv("POLAR_ACCESS_TOKEN")
+POLAR_PRODUCT_ID = os.getenv("POLAR_PRODUCT_ID")
 
 @router.post("/polar/checkout")
 def create_polar_checkout(current_user: contract.User = Depends(get_current_user)):
