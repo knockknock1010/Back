@@ -7,6 +7,7 @@ from app.routers.auth import get_current_user  # 기존 인증 로직 재사용
 from fastapi import Body
 import requests
 import os
+from fastapi.responses import HTMLResponse
 
 router = APIRouter(
     prefix="/api/users",
@@ -94,7 +95,7 @@ def create_polar_checkout(
     payload = {
         "product_id": product_id, # 👈 선택된 ID 사용
         "customer_email": current_user.email,
-        "success_url": "https://polar.sh",
+        "success_url": "https://back-production-e1e1.up.railway.app/api/users/polar/success",
         "metadata": {"user_id": str(current_user.id), "plan": plan_type}
     }
     
@@ -134,3 +135,25 @@ def cancel_premium_demo(
 def get_me(current_user: contract.User = Depends(get_current_user)):
     """현재 로그인한 유저의 최신 DB 정보를 반환합니다."""
     return current_user
+
+@router.get("/polar/success")
+def polar_success():
+    """결제 성공 시 보여줄 안내 페이지"""
+    html_content = """
+    <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+        </head>
+        <body style="display:flex; justify-content:center; align-items:center; height:100vh; background-color:#f8f9fa; text-align:center; font-family:sans-serif;">
+            <div>
+                <h1 style="color:#2563eb; font-size:24px;">🎉 결제 완료!</h1>
+                <p style="font-size:16px; color:#4b5563; line-height:1.5;">프리미엄 플랜 구독이 완료되었습니다.</p>
+                <div style="margin-top:20px; padding:15px; background-color:#fee2e2; border-radius:8px;">
+                    <p style="font-weight:bold; color:#b91c1c; margin:0;">화면 상단의 'X' 또는 '완료' 버튼을 눌러<br>앱으로 돌아가주세요.</p>
+                </div>
+            </div>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
