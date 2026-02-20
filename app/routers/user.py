@@ -97,7 +97,8 @@ def create_polar_checkout(current_user: contract.User = Depends(get_current_user
     
     response = requests.post(url, json=payload, headers=headers)
     
-    if response.status_code != 200:
+    if not response.ok:
+        print("🚨 Polar API 에러 원인:", response.text)
         raise HTTPException(status_code=500, detail="결제창 생성에 실패했습니다.")
         
     data = response.json()
