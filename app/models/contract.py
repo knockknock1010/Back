@@ -28,6 +28,9 @@ class User(Base):
     hashed_password = Column(String(255))
     name = Column(String(100))
     is_admin = Column(Boolean, default=False, nullable=False)
+
+    is_premium = Column(Boolean, default=False, nullable=False)
+    
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     # 문서와의 관계 설정 (사용자가 삭제되면 문서도 삭제? or 유지? -> 일단 유지)
